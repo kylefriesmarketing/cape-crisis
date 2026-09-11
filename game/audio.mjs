@@ -1,6 +1,6 @@
 import { CHAPTERS } from './engine.mjs';
 export class AudioDirector{
- constructor(){this.ctx=null;this.music=true;this.effects=true;this.active=false;this.step=0;this.next=0;this.chapter=0;this.lastShot=0;this.timer=null;}
+ constructor(){this.ctx=null;this.music=true;this.effects=true;this.active=false;this.step=0;this.next=0;this.chapter=0;this.lastShot=0;this.lastHit=0;this.timer=null;}
  async unlock(){if(!this.ctx){const AC=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AC)return;this.ctx=new AC();this.master=this.ctx.createGain();this.master.gain.value=.65;const comp=this.ctx.createDynamicsCompressor();comp.threshold.value=-18;comp.ratio.value=6;this.master.connect(comp);comp.connect(this.ctx.destination);
  this.noise=this.ctx.createBuffer(1,this.ctx.sampleRate,this.ctx.sampleRate);const d=this.noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
  }if(this.ctx.state==='suspended')await this.ctx.resume();if(!this.timer)this.timer=setInterval(()=>this.schedule(),25);}
@@ -26,6 +26,9 @@ export class AudioDirector{
  }
  event(e){if(!this.ctx||!this.effects)return;const t=this.ctx.currentTime;
   if(e.type==='shot'){if(t-this.lastShot<.065)return;this.lastShot=t;this.tone(e.weapon==='nova'?170:e.hero==='volt'?780:440,.07,'sawtooth',.035,null,e.weapon==='nova'?50:130);}
+  if(e.type==='hit'&&t-this.lastHit>.075){this.lastHit=t;this.tone(e.heavy?100:230,.055,'triangle',e.heavy?.07:.025,null,55);}
+  if(e.type==='warning'){this.tone(620,.17,'triangle',.06,t);this.tone(620,.17,'triangle',.06,t+.28);}
+  if(e.type==='enrage'){this.tone(110,.55,'sawtooth',.08,t,65);this.tone(116,.55,'sawtooth',.06,t);}
   if(e.type==='hurt'){this.noiseHit(.18,.13,200);this.tone(110,.2,'sawtooth',.1,null,40);}
   if(e.type==='dash')this.noiseHit(.13,.09,1900);
   if(e.type==='explosion'){this.noiseHit(.26,.15,180);this.tone(95,.28,'sine',.16,null,25);}

@@ -4,6 +4,20 @@ export const HEROES = [
   {id:'volt',name:'VOLT',role:'THE LIVE WIRE',color:'#56e4ff',light:'#c6faff',hp:95,speed:315,rate:.105,damage:16,super:'CHAIN REACTION',desc:'Lightning that jumps between aliens. Fast feet. Bad attitude.',tag:'FAST + ELECTRIC',symbol:'V'},
   {id:'atlas',name:'ATLAS',role:'THE HEAVY HITTER',color:'#f9d85f',light:'#fff0b0',hp:160,speed:225,rate:.37,damage:25,super:'METEOR STRIKE',desc:'A three-shot gravity punch. Turns a crowd into a crater.',tag:'ARMOR + SPREAD',symbol:'A'}
 ];
+export const DASHES = {
+ solar:{name:'SOLAR WAKE',damage:60,radius:28,push:190,desc:'Burn through aliens in your path.'},
+ volt:{name:'LIVE WIRE',damage:42,radius:64,push:110,desc:'Shock nearby aliens and erase their shots.'},
+ atlas:{name:'SHOULDER CHECK',damage:105,radius:38,push:420,desc:'Plow through a crowd and send it flying.'}
+};
+export function segmentDistance(point,a,b){
+ const dx=b.x-a.x,dy=b.y-a.y,t=clamp(((point.x-a.x)*dx+(point.y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);
+ return Math.hypot(point.x-a.x-dx*t,point.y-a.y-dy*t);
+}
+export function hazardHits(h,p,previousRadius=0){
+ if(h.type==='beam')return segmentDistance(p,h,{x:h.x+Math.cos(h.angle)*h.length,y:h.y+Math.sin(h.angle)*h.length})<h.width/2+p.r;
+ if(h.type==='shockwave'){const d=distance(h,p);return d>=Math.max(0,previousRadius-h.width-p.r)&&d<=(h.radius||0)+h.width+p.r;}
+ return distance(h,p)<h.r+p.r*.4;
+}
 export const CHAPTERS = [
  {name:'UNINVITED GUESTS',sub:'They came in peace. Kidding.',color:'#b4f563',bpm:126},
  {name:'STATIC SHOCK',sub:'The city has a new electricity problem.',color:'#63e2f9',bpm:138},
@@ -43,6 +57,7 @@ export class World {
   this.seed=seed>>>0; this.id=0; this.time=0; this.status='playing'; this.chapter=0;
   this.score=0; this.kills=0; this.combo=0; this.comboTimer=0; this.bestCombo=0;
   this.difficulty=difficulty; this.mult=difficulty==='casual'?.7:difficulty==='hard'?1.28:1;
+  this.decals=[];this.acquired=[];this.inputProgress={move:0,shoot:0,dash:0,super:0};this.damageFlash=0;
   this.enemies=[];this.bullets=[];this.hostile=[];this.pickups=[];this.portals=[];
   this.particles=[];this.rings=[];this.labels=[];this.hazards=[];this.events=[];
   this.spawnClock=1.3;this.pickupClock=9;this.hazardClock=7;this.shake=0;
@@ -56,7 +71,7 @@ export class World {
   id,hero:def.id,def,x:WIDTH/2+(id?48:-24),y:HEIGHT/2,r:17,hp:def.hp,maxHp:def.hp,
   angle:-Math.PI/2,shot:0,invuln:2,dashCooldown:0,dashTime:0,dashX:0,dashY:0,
   charge:35,superTime:0,weapon:null,weaponTime:0,damageMul:1,rateMul:1,speedMul:1,chargeMul:1,pierce:0,
-  lastDash:false,lastSuper:false,trail:[],revive:0,kills:0
+  lastDash:false,lastSuper:false,dashHits:new Set(),trail:[],revive:0,kills:0,damageTaken:0,dashes:0,supers:0
  };}
  emit(type,data={}){this.events.push({type,...data});}
  drainEvents(){return this.events.splice(0);}
@@ -72,7 +87,7 @@ export class World {
   const d=ENEMIES[type],boss=type==='warden'||type==='mother';
   const hp=d.hp*(boss?1:1+this.chapter*.085)*this.mult*(this.players.length===2?1.5:1);
   this.enemies.push({...d,type,x,y,id:++this.id,hp,maxHp:hp,angle:0,hit:0,
-   cool:1+this.random()*2,phase:'hunt',timer:0,vx:0,vy:0,boss,age:0});
+   cool:1+this.random()*2,phase:'hunt',timer:0,vx:0,vy:0,kx:0,ky:0,boss,age:0,attackCount:0,enraged:false});
   if(boss){this.emit('boss');this.banner={title:type==='mother'?'THE MOTHERSHIP':'THE COLLECTION AGENT',sub:type==='mother'?'Send it back to the manufacturer.':'It would like to speak to your planet.',ttl:4};this.shake=15;}
  }
  buildGrid(){this.grid.clear();for(const e of this.enemies){if(e.hp<=0)continue;const key=Math.floor(e.x/90)+','+Math.floor(e.y/90);if(!this.grid.has(key))this.grid.set(key,[]);this.grid.get(key).push(e);}}
@@ -88,32 +103,41 @@ export class World {
   for(const a of angles){const q=angle+a;this.bullets.push({x:p.x+Math.cos(q)*23,y:p.y+Math.sin(q)*23,
    vx:Math.cos(q)*speed,vy:Math.sin(q)*speed,damage,r,pierce,ttl:life,owner:p.id,
    color:weapon?WEAPONS[weapon].color:p.def.color,weapon,chain:p.hero==='volt'&&!weapon,hit:new Set()});}
-  p.shot=rate;this.emit('shot',{hero:p.hero,weapon});
+  p.shot=rate;this.inputProgress.shoot++;this.emit('shot',{hero:p.hero,weapon});
  }
  damageEnemy(e,damage,owner){
-  if(e.hp<=0)return;e.hp-=damage;e.hit=.09;
+  if(e.hp<=0||this.status==='defeat'||this.status==='victory')return;e.hp-=damage;e.hit=.09;
+  if(e.hp>0&&e.boss&&!e.enraged&&e.hp/e.maxHp<=.5){
+   e.enraged=true;e.cool=Math.max(e.cool,1.6);
+   this.banner={title:e.type==='mother'?'MOTHERSHIP / CORE EXPOSED':'WARDEN / OVERLOAD',sub:'The warnings are your opening. Keep moving.',ttl:3};
+   this.emit('enrage');this.ring(e.x,e.y,'#ff8b71',e.r*1.8);
+  }
   if(e.hp>0)return;
   const p=this.players[owner];if(p){p.charge=clamp(p.charge+(e.boss?25:2.1)*p.chargeMul,0,100);p.kills++;}
   this.combo++;this.comboTimer=3;this.bestCombo=Math.max(this.bestCombo,this.combo);
   const mult=1+Math.min(9,Math.floor(this.combo/12));const score=e.score*mult;this.score+=score;this.kills++;
   this.burst(e.x,e.y,e.color,e.boss?70:7,e.boss?430:100);
+  this.decals.push({x:e.x,y:e.y,r:e.r*(e.boss?1.4:.7),color:e.color,angle:e.angle,ttl:14});
+  if(this.decals.length>85)this.decals.shift();
+  this.emit('hit',{heavy:e.boss||e.type==='brute',owner});
+  if(e.type==='brute'||e.type==='charger')this.shake=Math.max(this.shake,3);
   if(this.kills%4===0||e.boss)this.label(e.x,e.y,'+'+score,e.color,e.boss);
   if(this.combo%25===0){this.label(p?.x||e.x,(p?.y||e.y)-50,this.combo+' HIT COMBO!','#f7f6df',true);this.emit('combo');}
   if(e.type==='splitter'){for(let i=0;i<3;i++)this.spawn('skitter',e.x+(this.random()-.5)*40,e.y+(this.random()-.5)*40,true);}
   if(this.random()<.055||e.boss)this.drop(e.x,e.y,e.boss?'health':null);
-  if(e.boss){this.shake=24;this.ring(e.x,e.y,e.color,650);this.emit('explosion');for(const p of this.players)if(p.hp>0)p.hp=Math.min(p.maxHp,p.hp+35);}
+  if(e.boss){this.hostile=[];this.hazards=[];this.shake=24;this.ring(e.x,e.y,e.color,650);this.emit('explosion');for(const p of this.players)if(p.hp>0)p.hp=Math.min(p.maxHp,p.hp+35);}
   if(e.type==='mother'){this.status='victory';this.emit('victory');}
  }
  damagePlayer(p,amount){
-  if(this.status==='victory'||p.hp<=0||p.invuln>0||p.dashTime>0)return;
-  p.hp=Math.max(0,p.hp-amount*this.mult);p.invuln=1;this.combo=0;this.comboTimer=0;this.shake=12;
+  if(this.status!=='playing'||p.hp<=0||p.invuln>0||p.dashTime>0)return;
+  p.damageTaken+=Math.min(p.hp,amount*this.mult);this.damageFlash=.22;p.hp=Math.max(0,p.hp-amount*this.mult);p.invuln=1;this.combo=0;this.comboTimer=0;this.shake=12;
   this.burst(p.x,p.y,'#ff5a65',18);this.emit('hurt');
   if(p.hp===0){this.label(p.x,p.y,'HERO DOWN','#ff6878',true);this.ring(p.x,p.y,'#ff6878',100);}
   if(this.players.every(q=>q.hp<=0)){this.status='defeat';this.emit('defeat');}
  }
  super(p){
-  if(p.charge<100||p.hp<=0)return false;
-  p.charge=0;p.invuln=Math.max(p.invuln,2);p.superTime=1.6;this.shake=22;this.emit('super');
+  if(this.status!=='playing'||p.charge<100||p.hp<=0)return false;
+  p.supers++;this.inputProgress.super++;p.charge=0;p.invuln=Math.max(p.invuln,2);p.superTime=1.6;this.shake=22;this.emit('super');
   this.label(p.x,p.y-45,p.def.super,p.def.color,true);
   const radius=p.hero==='volt'?720:p.hero==='atlas'?420:560;
   this.ring(p.x,p.y,p.def.color,radius);
@@ -138,14 +162,16 @@ export class World {
  }
  chooseUpgrade(id){
   if(this.status!=='upgrade'||!this.upgrades.some(u=>u.id===id))return false;
+  this.acquired.push(id);
   for(const p of this.players){
+   const wasDown=p.hp<=0;
    if(id==='damage')p.damageMul*=1.22;
    if(id==='rate')p.rateMul*=1.18;
    if(id==='health'){p.maxHp+=25;p.hp=Math.min(p.maxHp,p.hp+50);}
    if(id==='speed'){p.speedMul*=1.12;}
    if(id==='charge'){p.chargeMul*=1.35;p.charge=Math.min(100,p.charge+30);}
    if(id==='pierce')p.pierce++;
-   if(p.hp<=0){p.hp=p.maxHp*.5;p.x=WIDTH/2;p.y=HEIGHT/2;p.invuln=4;}
+   if(wasDown){p.hp=p.maxHp*.5;p.x=WIDTH/2;p.y=HEIGHT/2;p.invuln=4;}
   }
   this.status='playing';this.upgrades=[];this.emit('upgrade');return true;
  }
@@ -156,7 +182,8 @@ export class World {
  }
  step(dt,inputs=[]){
   if(this.status!=='playing')return;dt=Math.min(dt,.05);this.time+=dt;
-  this.shake=Math.max(0,this.shake-dt*38);
+  this.shake=Math.max(0,this.shake-dt*38);this.damageFlash=Math.max(0,this.damageFlash-dt);
+  this.decals=this.decals.filter(d=>(d.ttl-=dt)>0);
   if(this.banner)this.banner.ttl-=dt;
   this.comboTimer=Math.max(0,this.comboTimer-dt);if(!this.comboTimer)this.combo=0;
   const next=Math.min(5,Math.floor(this.time/60));if(next>this.chapter){this.chapterChange(next);if(this.status!=='playing')return;}
@@ -171,15 +198,26 @@ export class World {
    let ax=i.aimX||0,ay=i.aimY||0;if(i.autoAim){const target=this.nearest(p);if(target){ax=target.x-p.x;ay=target.y-p.y;}}
    if(Math.hypot(ax,ay)>.12)p.angle=Math.atan2(ay,ax);
    if(i.dash&&!p.lastDash&&p.dashCooldown<=0){
-    p.dashTime=.19;p.dashCooldown=2.5/p.speedMul;let d=mag?Math.atan2(my,mx):p.angle;
+    p.dashHits.clear();p.dashes++;this.inputProgress.dash++;p.dashTime=.19;p.dashCooldown=2.5/p.speedMul;let d=mag?Math.atan2(my,mx):p.angle;
     p.dashX=Math.cos(d);p.dashY=Math.sin(d);this.emit('dash');this.burst(p.x,p.y,p.def.color,10,60);
    }
    if(i.super&&!p.lastSuper)this.super(p);p.lastSuper=!!i.super;p.lastDash=!!i.dash;
    if(p.dashTime>0){mx=p.dashX*3.7;my=p.dashY*3.7;}
+   const previous={x:p.x,y:p.y};if(mag>0)this.inputProgress.move+=dt;
    const speed=p.def.speed*p.speedMul;p.x=clamp(p.x+mx*speed*dt,35,WIDTH-35);p.y=clamp(p.y+my*speed*dt,35,HEIGHT-35);
-   if(mag>0||p.dashTime>0)p.trail.push({x:p.x,y:p.y,a:p.angle,ttl:.16});p.trail=p.trail.filter(t=>(t.ttl-=dt)>0);
+   if(p.dashTime>0){
+    const dash=DASHES[p.hero];
+    for(const e of [...this.enemies])if(e.hp>0&&!p.dashHits.has(e.id)&&segmentDistance(e,previous,p)<e.r+dash.radius){
+     p.dashHits.add(e.id);this.damageEnemy(e,dash.damage*p.damageMul,p.id);
+     this.knockback(e,p.dashX,p.dashY,dash.push);this.burst(e.x,e.y,p.def.color,6,100);
+     if(p.hero==='volt')this.rings.push({x:p.x,y:p.y,x2:e.x,y2:e.y,ttl:.2,t:0,color:p.def.color,lightning:true});
+    }
+    if(p.hero==='volt')this.hostile=this.hostile.filter(b=>segmentDistance(b,previous,p)>dash.radius);
+   }
+   if(mag>0||p.dashTime>0)p.trail.push({x:p.x,y:p.y,a:p.angle,ttl:p.dashTime>0?.26:.1});p.trail=p.trail.filter(t=>(t.ttl-=dt)>0);
    if((i.shoot||i.autoAim)&&p.shot<=0)this.fire(p,p.angle);
   }
+  if(this.status!=='playing')return;
   this.spawnClock-=dt;
   if(this.spawnClock<=0){this.spawnClock=Math.max(.22,1.08-this.chapter*.135)/(this.players.length===2?1.4:1);
    const pool=this.chapter===0?['grunt','grunt','grunt','skitter']:this.chapter===1?['grunt','skitter','skitter','spitter']:this.chapter===2?['grunt','brute','charger','splitter']:['grunt','skitter','spitter','charger','splitter','brute'];
@@ -203,19 +241,14 @@ export class World {
     if(e.cool<=0){this.enemyShot(e,e.angle,200,13);e.cool=2.2;}
    }else if(e.boss){
     if(d<260){vx=-vx*.4;vy=-vy*.4;}
-    if(e.cool<=0){
-     const count=e.type==='mother'?20:12,phase=e.age*.37;
-     for(let n=0;n<count;n++)this.enemyShot(e,n/count*Math.PI*2+phase,e.type==='mother'?165:140,17);
-     for(let n=-1;n<=1;n++)this.enemyShot(e,e.angle+n*.16,240,18);
-     if(e.type==='mother')for(let n=0;n<2;n++)this.spawn('skitter',e.x+(this.random()-.5)*120,e.y+90);
-     this.ring(e.x,e.y,e.color,120);e.cool=e.type==='mother'?1.8:2.7;this.emit('enemyshot');
-    }
+    if(e.cool<=0)this.bossAttack(e,target);
    }
    if(!e.boss&&e.phase!=='dash'){
     let sx=0,sy=0;for(const other of this.nearby(e.x,e.y,45)){if(other===e||other.hp<=0)continue;const ex=e.x-other.x,ey=e.y-other.y,q=Math.hypot(ex,ey)||.01,over=e.r+other.r-q;if(over>0){sx+=ex/q*over*2;sy+=ey/q*over*2;}}
     vx+=clamp(sx,-80,80);vy+=clamp(sy,-80,80);
    }
-   e.x=clamp(e.x+vx*dt,20,WIDTH-20);e.y=clamp(e.y+vy*dt,20,HEIGHT-20);
+   e.x=clamp(e.x+(vx+e.kx)*dt,20,WIDTH-20);e.y=clamp(e.y+(vy+e.ky)*dt,20,HEIGHT-20);
+   e.kx*=Math.exp(-dt*9);e.ky*=Math.exp(-dt*9);
    for(const p of this.players)if(p.hp>0&&distance(e,p)<e.r+p.r-4)this.damagePlayer(p,e.boss?30:e.type==='brute'?26:16);
   }
   this.buildGrid();
@@ -227,7 +260,9 @@ export class World {
     if(e.hp<=0||b.hit.has(e.id))continue;
     const t=clamp(((e.x-ox)*dx+(e.y-oy)*dy)/(len||1),0,1);
     if(Math.hypot(e.x-ox-dx*t,e.y-oy-dy*t)>e.r+b.r)continue;
-    b.hit.add(e.id);this.damageEnemy(e,b.damage,b.owner);this.burst(b.x,b.y,b.color,2,55);
+    b.hit.add(e.id);this.damageEnemy(e,b.damage,b.owner);
+    const speed=Math.hypot(b.vx,b.vy)||1;const force=b.weapon==='nova'?240:this.players[b.owner]?.hero==='atlas'?160:55;
+    this.knockback(e,b.vx/speed,b.vy/speed,force);this.burst(b.x,b.y,b.color,2,55);
     if(b.weapon==='nova'){this.ring(b.x,b.y,b.color,110);for(const other of [...this.enemies])if(other!==e&&other.hp>0&&distance(b,other)<110)this.damageEnemy(other,b.damage*.7,b.owner);this.emit('explosion');b.ttl=0;break;}
     if(b.chain){const other=this.nearest(e,145,e);if(other){this.damageEnemy(other,b.damage*.75,b.owner);this.rings.push({x:e.x,y:e.y,x2:other.x,y2:other.y,ttl:.16,t:0,color:'#75eeff',lightning:true});}}
     if(b.pierce--<=0){b.ttl=0;break;}
@@ -238,9 +273,23 @@ export class World {
    for(const p of this.players)if(p.hp>0&&distance(p,b)<p.r+b.r){this.damagePlayer(p,b.damage);b.ttl=0;break;}}
   this.hostile=this.hostile.filter(b=>b.ttl>0&&b.x>0&&b.x<WIDTH&&b.y>0&&b.y<HEIGHT);
   this.pickupClock-=dt;if(this.pickupClock<=0){this.pickupClock=13;const p=this.players.find(p=>p.hp>0);if(p)this.drop(clamp(p.x+(this.random()-.5)*350,80,WIDTH-80),clamp(p.y+(this.random()-.5)*280,80,HEIGHT-80),p.hp<p.maxHp*.4?'health':null);}
-  this.pickups=this.pickups.filter(item=>{item.ttl-=dt;for(const p of this.players)if(p.hp>0){const d=distance(p,item);if(d<85){item.x+=(p.x-item.x)*dt*6;item.y+=(p.y-item.y)*dt*6;}if(d<p.r+item.r){this.collect(p,item);return false;}}return item.ttl>0;});
+  this.pickups=this.pickups.filter(item=>{
+   item.ttl-=dt;const p=this.target(item);
+   if(p){const d=distance(p,item);if(d<95){item.x+=(p.x-item.x)*dt*6;item.y+=(p.y-item.y)*dt*6;}if(d<p.r+item.r){this.collect(p,item);return false;}}
+   return item.ttl>0;
+  });
   if(this.chapter>=3){this.hazardClock-=dt;if(this.hazardClock<=0){this.hazardClock=this.chapter===5?4:6;const p=this.target({x:WIDTH/2,y:HEIGHT/2});if(p)this.hazards.push({x:p.x,y:p.y,r:82,ttl:2.1,hit:false});}}
-  for(const h of this.hazards){h.ttl-=dt;if(h.ttl<.3&&!h.hit){h.hit=true;this.ring(h.x,h.y,'#ec9aff',h.r*1.5);this.burst(h.x,h.y,'#df8bff',26,220);this.emit('explosion');for(const p of this.players)if(distance(h,p)<h.r)this.damagePlayer(p,34);}}
+  for(const h of this.hazards){
+   h.ttl-=dt;const active=h.active??.3;
+   if(h.ttl<=active){
+    const previous=h.radius||0;
+    if(h.type==='shockwave')h.radius=h.r*clamp(1-h.ttl/active,0,1);
+    if(!h.hit){h.hit=true;h.victims=new Set();this.emit('explosion');if(!h.type){this.ring(h.x,h.y,'#ec9aff',h.r*1.5);this.burst(h.x,h.y,'#df8bff',26,220);}}
+    for(const p of this.players)if(p.hp>0&&!h.victims.has(p.id)&&hazardHits(h,p,previous)){
+     if(!p.invuln&&!p.dashTime){this.damagePlayer(p,h.damage||34);h.victims.add(p.id);}
+    }
+   }
+  }
   this.hazards=this.hazards.filter(h=>h.ttl>0);
   this.enemies=this.enemies.filter(e=>e.hp>0);
   for(const p of this.particles){p.ttl-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=1-dt*3;p.vy*=1-dt*3;}
@@ -248,6 +297,36 @@ export class World {
   this.rings=this.rings.filter(r=>{r.t+=dt;r.ttl-=dt;return r.ttl>0;});
   this.labels=this.labels.filter(l=>{l.ttl-=dt;l.y-=dt*25;return l.ttl>0;});
  }
+ knockback(e,x,y,force){
+  if(e.hp<=0||e.boss)return;e.kx=clamp((e.kx||0)+x*force,-650,650);e.ky=clamp((e.ky||0)+y*force,-650,650);
+ }
+ bossAttack(e,target){
+  const attack=e.attackCount++%3,enraged=e.enraged,phase=e.age*.37;
+  if(attack===0){
+   const count=e.type==='mother'?18:12;
+   for(let n=0;n<count;n++)this.enemyShot(e,n/count*Math.PI*2+phase,enraged?170:140,17);
+   for(let n=-1;n<=1;n++)this.enemyShot(e,e.angle+n*.19,215,18);
+   this.ring(e.x,e.y,e.color,120);this.emit('enemyshot');
+  }else if(e.type==='mother'&&attack===1){
+   const windup=1.5,active=.65;
+   this.hazards.push({type:'beam',x:e.x,y:e.y,angle:Math.atan2(target.y-e.y,target.x-e.x),length:1600,width:48,ttl:windup+active,windup,active,damage:36,hit:false});
+   this.label(e.x,e.y-e.r-30,'ORBITAL LANCE','#e9c6ff',true);this.emit('warning');
+  }else if(e.type==='mother'){
+   for(const p of this.players)if(p.hp>0){
+    for(let n=0;n<(enraged?3:2);n++)this.hazards.push({x:clamp(p.x+(n-1)*120,85,WIDTH-85),y:clamp(p.y+(n%2)*85,85,HEIGHT-85),r:70,ttl:2.1+n*.18,windup:1.8+n*.18,active:.3,damage:30,hit:false});
+   }
+   for(let n=0;n<2;n++)this.spawn('skitter',e.x+(this.random()-.5)*120,e.y+90);
+   this.emit('warning');
+  }else if(attack===1){
+   this.hazards.push({type:'shockwave',x:e.x,y:e.y,r:500,radius:0,width:13,ttl:2.5,windup:1.1,active:1.4,damage:25,hit:false});
+   this.label(e.x,e.y-e.r-25,'SHOCKWAVE / DASH THROUGH','#ffcc80',true);this.emit('warning');
+  }else{
+   for(let n=-2;n<=2;n++)this.enemyShot(e,e.angle+n*.15,210,18);
+   this.spawn('charger',clamp(e.x-95,50,WIDTH-50),e.y);
+   this.spawn('charger',clamp(e.x+95,50,WIDTH-50),e.y);
+  }
+  e.cool=(e.type==='mother'?2.7:3.1)*(enraged?.83:1);
+ }
  enemyShot(e,a,s,damage){this.hostile.push({x:e.x+Math.cos(a)*e.r,y:e.y+Math.sin(a)*e.r,vx:Math.cos(a)*s,vy:Math.sin(a)*s,ttl:8,damage,r:7,color:e.color});}
- summary(){return {status:this.status,hero:this.players[0].hero,chapter:this.chapter+1,time:Math.floor(this.time),score:this.score,kills:this.kills,bestCombo:this.bestCombo,enemies:this.enemies.length,players:this.players.map(p=>({hero:p.hero,health:Math.ceil(p.hp),maxHealth:p.maxHp,super:Math.floor(p.charge)}))};}
+ summary(){return {status:this.status,hero:this.players[0].hero,chapter:this.chapter+1,time:Math.floor(this.time),score:this.score,kills:this.kills,bestCombo:this.bestCombo,upgrades:[...this.acquired],enemies:this.enemies.length,players:this.players.map(p=>({hero:p.hero,health:Math.ceil(p.hp),maxHealth:p.maxHp,super:Math.floor(p.charge)}))};}
 }

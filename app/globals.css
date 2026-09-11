@@ -21,3 +21,42 @@
 @media(max-width:760px){.title-screen{padding:0 22px}.masthead{padding-top:22px}.edition{display:none}.cover-art{height:700px;object-fit:cover;object-position:64% 0%;opacity:.74}.cover-shade{background:linear-gradient(90deg,#09121ccc,transparent),linear-gradient(0deg,#09121c 18%,#09121ca0 65%,#09121c20)}.title-copy{padding-top:42px;padding-bottom:45px}.title-copy h1{font-size:105px}.title-sub{font-size:15px}.title-description{font-size:14px}.cover-stamp{display:none}.hero-grid{grid-template-columns:1fr;gap:8px}.hero-card{min-height:91px;padding:13px 35px 13px 20px;gap:20px}.hero-card p{font-size:14px;max-width:none}.hero-card strong{font-size:23px}.hero-emblem{width:38px;height:38px}.hero-role{font-size:12px}.hero-check{top:20px;right:18px}.selection-heading{font-size:12px;letter-spacing:0}.best-score{font-size:10px;letter-spacing:0;gap:5px}.launch-row{flex-direction:column;align-items:stretch;padding-top:18px;gap:20px}.run-setup{justify-content:space-between;gap:10px}.difficulty{padding:10px 8px;font-size:12px}.launch-button{height:56px!important;font-size:15px!important}.menu-footer{flex-wrap:wrap;gap:20px;justify-content:space-between;padding:18px 0}.menu-footer .credit{display:none}.menu-footer>span{font-size:10px;letter-spacing:0}.imprint{font-size:10px}.imprint b{font-size:14px}.imprint-star{font-size:40px}.game-hud{padding:15px;gap:13px}.health-panels{gap:10px;flex-direction:column}.health-panel{width:130px;min-width:110px}.hud-hero{font-size:17px}.hud-hero small{font-size:10px}.score-panel>strong{font-size:27px}.run-time{padding-left:13px}.run-time strong{font-size:17px}.run-time span{font-size:10px}.pause-button{width:35px;height:35px}.combat-footer{padding:25px 15px 15px}.power-panel{width:205px}.power-panels{gap:8px;flex-direction:column}.track-info{display:none}.super-meter{padding:9px 8px 12px}.super-meter>span{font-size:11px}.boss-hud{top:98px}.game-dialog{padding:26px!important}.dialog-heading{font-size:50px!important}.dialog-copy{font-size:15px!important}.upgrade-grid{grid-template-columns:1fr;gap:8px}.upgrade-card{min-height:0;padding:15px!important;display:grid!important;grid-template-columns:30px 1fr;gap:6px 15px!important}.upgrade-card>svg{grid-row:span 2}.upgrade-card>strong{font-size:21px}.upgrade-card>p{font-size:14px}.upgrade-card>span{display:none}.upgrade-dialog{max-height:calc(100dvh - 25px);overflow-y:auto}.controls-list>div{gap:12px}.controls-list span{font-size:11px}.controls-list b{font-size:12px}.result-stats{gap:12px}.result-stats span{font-size:10px}.setting-row small{font-size:13px}.coop-toggle{gap:6px}.coop-toggle>svg{display:none}.coop-toggle>span{font-size:11px}}
 @media(max-height:530px){.game-dialog{max-height:calc(100dvh - 24px);overflow-y:auto;padding:22px!important}.dialog-heading{font-size:39px!important}.game-hud{padding:12px 20px}.combat-footer{padding:14px 20px 10px}.health-panel{width:150px}.health-panels{flex-direction:row}.power-panels{flex-direction:row}.super-meter{padding:7px 8px 10px}.touch-actions{bottom:88px;right:24px}.touch-actions button{width:55px;height:55px}.boss-hud{top:74px;width:35vw}.upgrade-grid{grid-template-columns:repeat(3,1fr)}.upgrade-card{display:flex!important;padding:14px!important}.upgrade-card>strong{font-size:18px}.upgrade-card>svg{width:20px!important;height:20px!important}.upgrade-card p{font-size:13px}.track-info,.game-control-hints{display:none}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}.hero-card:hover,.launch-button:hover{transform:none}}
+
+/* Issue 02: combat readability and controller selection. */
+.dash-description{display:block;color:var(--hero);font:11px 'Courier New',monospace;letter-spacing:.6px;margin-top:7px}
+.chapter-timeline{position:absolute;top:99px;left:28px;width:256px;display:flex;gap:5px;pointer-events:none}
+.chapter-timeline>span{position:relative;height:5px;flex:1;background:#73828240}
+.chapter-timeline>span>i{display:block;height:100%;background:var(--chapter);opacity:.8}
+.chapter-timeline>span>b{position:absolute;top:10px;left:0;font:10px 'Courier New',monospace;color:#6e878a}
+.chapter-timeline>span.current>b,.chapter-timeline>span.complete>b{color:#c9dfca}
+.chapter-timeline>span.current{box-shadow:0 0 9px color-mix(in srgb,var(--chapter) 22%,transparent)}
+.chapter-timeline>small{position:absolute;left:0;top:31px;font:10px 'Courier New',monospace;letter-spacing:1px;color:#a1bcb8;white-space:nowrap}
+.combo-readout{position:absolute;top:100%;right:0;min-width:122px}
+.combo-readout>em{color:#c5f27d;font:bold 12px 'Courier New',monospace;white-space:nowrap}
+.combo-readout>span{display:block;height:3px;background:#74955640;margin-top:4px}
+.combo-readout i{display:block;height:100%;background:#c5f27d;transition:width .12s linear}
+.weapon-duration{height:2px;background:#64788340;margin-top:7px}
+.weapon-duration i{display:block;height:100%;transition:width .12s linear}
+.field-guide{position:absolute;bottom:118px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:12px 17px;background:#0a192ddd;border:1px solid #92b9a944;border-radius:3px;font:12px 'Courier New',monospace;letter-spacing:.5px;color:#d0e5cf;pointer-events:none}
+.field-guide svg{flex-shrink:0;color:#c8f188}
+.upgrade-card.pad-selected{border-color:#c8f785!important;box-shadow:inset 0 -3px #c8f785}
+.build-recap{border-top:1px solid #647d8159;padding-top:15px}
+.build-recap>span{font:11px 'Courier New',monospace;letter-spacing:2px;color:#96b3b4}
+.build-recap>div{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.build-recap b{font:11px 'Courier New',monospace;letter-spacing:.4px;color:#c0dc9d;border:1px solid #66845960;padding:7px 9px;background:#bff47b07}
+@media(max-width:760px){
+ .hero-card{min-height:112px}.dash-description{font-size:11px;margin-top:5px}
+ .chapter-timeline{top:auto;bottom:98px;left:15px;width:185px}.chapter-timeline small{top:auto;bottom:12px;font-size:9px}.chapter-timeline>span>b{display:none}
+ .field-guide{bottom:auto;top:132px;font-size:11px;line-height:1.5;width:max-content;padding:9px 12px}
+ .in-game:has(.health-panels>div:nth-child(2)) .chapter-timeline{bottom:177px}
+ .boss-hud{top:108px}
+ .menu-footer .credit{display:none}
+}
+@media(max-height:530px){
+ .chapter-timeline{top:80px;bottom:auto;left:20px;width:155px}.chapter-timeline small{top:25px;bottom:auto;font-size:9px}.chapter-timeline>span>b{display:block;font-size:9px}
+ .in-game:has(.health-panels>div:nth-child(2)) .chapter-timeline{bottom:auto}
+ .field-guide{bottom:96px;top:auto;max-width:60vw;font-size:10px;padding:8px 10px}
+ .hero-card{min-height:115px}
+}
+
+.pad-focus{outline:2px solid #c5f27d!important;outline-offset:4px!important}

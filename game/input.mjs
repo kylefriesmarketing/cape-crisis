@@ -1,19 +1,19 @@
 import { clamp } from './engine.mjs';
 export class Controls {
  constructor(canvas,renderer,onPause){
-  this.canvas=canvas;this.renderer=renderer;this.keys=new Set();this.mouse={x:720,y:350,down:false,seen:false};this.touch={left:null,right:null};this.usingTouch=false;this.padPrev=false;this.buttonDash=false;this.buttonSuper=false;this.listeners=[];
-  this.listen(window,'keydown',e=>{if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,[role=dialog]'))return;if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();this.keys.add(e.code);if((e.code==='Escape'||e.code==='KeyP')&&!e.repeat)onPause();});
+  this.canvas=canvas;this.renderer=renderer;this.keys=new Set();this.mouse={x:720,y:350,down:false,seen:false};this.touch={left:null,right:null};this.usingTouch=!!window.matchMedia?.('(pointer: coarse)').matches;this.mode=this.usingTouch?'touch':'keyboard';this.padPrev=false;this.buttonDash=false;this.buttonSuper=false;this.listeners=[];
+  this.listen(window,'keydown',e=>{if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,[role=dialog]'))return;if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();this.mode='keyboard';this.keys.add(e.code);if((e.code==='Escape'||e.code==='KeyP')&&!e.repeat)onPause();});
   this.listen(window,'keyup',e=>this.keys.delete(e.code));
   this.listen(window,'blur',()=>this.clear());
   this.listen(canvas,'contextmenu',e=>e.preventDefault());
   this.listen(canvas,'pointerdown',e=>{
-   if(e.pointerType==='touch'){this.usingTouch=true;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,key=x<r.width/2?'left':'right';if(!this.touch[key])this.touch[key]={id:e.pointerId,sx:x,sy:y,dx:0,dy:0};}
-   else{this.usingTouch=false;this.mouse.down=e.button===0;this.mouse.seen=true;Object.assign(this.mouse,renderer.screenToWorld(e.clientX,e.clientY));}
+   if(e.pointerType==='touch'){this.usingTouch=true;this.mode='touch';const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,key=x<r.width/2?'left':'right';if(!this.touch[key])this.touch[key]={id:e.pointerId,sx:x,sy:y,dx:0,dy:0};}
+   else{this.usingTouch=false;this.mode='keyboard';this.mouse.down=e.button===0;this.mouse.seen=true;Object.assign(this.mouse,renderer.screenToWorld(e.clientX,e.clientY));}
    canvas.setPointerCapture(e.pointerId);e.preventDefault();
   });
   this.listen(canvas,'pointermove',e=>{
    if(e.pointerType==='touch'){const r=canvas.getBoundingClientRect();for(const s of Object.values(this.touch))if(s?.id===e.pointerId){s.dx=e.clientX-r.left-s.sx;s.dy=e.clientY-r.top-s.sy;}}
-   else{this.mouse.seen=true;Object.assign(this.mouse,renderer.screenToWorld(e.clientX,e.clientY));}
+   else{this.mode='keyboard';this.mouse.seen=true;Object.assign(this.mouse,renderer.screenToWorld(e.clientX,e.clientY));}
   });
   const up=e=>{for(const k of ['left','right'])if(this.touch[k]?.id===e.pointerId)this.touch[k]=null;if(e.pointerType!=='touch')this.mouse.down=false;};
   this.listen(canvas,'pointerup',up);this.listen(canvas,'pointercancel',up);this.listen(canvas,'lostpointercapture',up);
@@ -35,7 +35,9 @@ export class Controls {
    const dead=v=>Math.abs(v||0)<.18?0:v;const rx=dead(pad.axes[2]),ry=dead(pad.axes[3]);
    const start=!!pad.buttons[9]?.pressed;if(start&&!this.padPrev)this.onPause();this.padPrev=start;
    const data={moveX:dead(pad.axes[0]),moveY:dead(pad.axes[1]),aimX:rx,aimY:ry,shoot:Math.hypot(rx,ry)>.18||!!pad.buttons[7]?.pressed,dash:!!pad.buttons[0]?.pressed||!!pad.buttons[4]?.pressed,super:!!pad.buttons[2]?.pressed||!!pad.buttons[5]?.pressed,autoAim};
-   if(n===1||Object.entries(data).some(([key,value])=>key!=='autoAim'&&value))result[n]=data;
+   const active=Object.entries(data).some(([key,value])=>key!=='autoAim'&&value);
+   if(n===0&&active){this.mode='gamepad';this.usingTouch=false;}
+   if(n===1||active||this.mode==='gamepad')result[n]=data;
   }
   return result;
  }
